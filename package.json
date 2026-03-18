@@ -1,1 +1,12 @@
-
+{
+  "name": "snippet-automation",
+  "version": "1.0.0",
+  "description": "Notion to 1000.school snippet automation",
+  "main": "scripts/sync-snippets.js",
+  "scripts": {
+    "sync": "node scripts/sync-snippets.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
