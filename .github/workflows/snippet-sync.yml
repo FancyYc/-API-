@@ -1,1 +1,30 @@
+name: Sync Notion Snippets
 
+on:
+  schedule:
+    - cron: "*/5 * * * *"  # 5분마다 실행
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 코드 가져오기
+        uses: actions/checkout@v3
+
+      - name: Node.js 설치
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: 패키지 설치
+        run: npm install
+
+      - name: 스크립트 실행
+        run: node scripts/sync-snippets.js
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          SNIPPET_API_URL: ${{ secrets.SNIPPET_API_URL }}
+          SNIPPET_API_TOKEN: ${{ secrets.SNIPPET_API_TOKEN }}
