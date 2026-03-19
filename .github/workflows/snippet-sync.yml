@@ -23,6 +23,5 @@ jobs:
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
-          SNIPPET_API_URL: ${{ secrets.SNIPPET_API_URL }}
+          SNIPPET_API_BASE_URL: ${{ secrets.SNIPPET_API_BASE_URL }}
           SNIPPET_API_TOKEN: ${{ secrets.SNIPPET_API_TOKEN }}
-          
