@@ -25,3 +25,4 @@ jobs:
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
           SNIPPET_API_URL: ${{ secrets.SNIPPET_API_URL }}
           SNIPPET_API_TOKEN: ${{ secrets.SNIPPET_API_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
