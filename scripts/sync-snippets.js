@@ -3,12 +3,9 @@ const NOTION_DATABASE_ID = process.env.NOTION_DATABASE_ID;
 const SNIPPET_API_BASE_URL = process.env.SNIPPET_API_BASE_URL;
 const SNIPPET_API_TOKEN = process.env.SNIPPET_API_TOKEN;
 
-// ---------- 공통 유틸 ----------
-function formatDateKST(date = new Date()) {
-  const kst = new Date(date.getTime() + 9 * 60 * 60 * 1000);
-  return kst.toISOString().slice(0, 10);
-}
-
+// =========================
+// 공통 유틸
+// =========================
 function minusOneDay(dateStr) {
   const d = new Date(`${dateStr}T00:00:00`);
   d.setDate(d.getDate() - 1);
@@ -27,16 +24,13 @@ function getPeopleNames(prop) {
   return prop?.people?.map(p => p.name).join(", ") || "";
 }
 
-function getDate(prop) {
-  return prop?.date?.start || "";
-}
-
 function getAuthor(props) {
   return getRichText(props["작성자"]) || getPeopleNames(props["작성자"]);
 }
 
 function toChecklistMarkdown(raw = "") {
   if (!raw.trim()) return "";
+
   const lines = raw
     .split("\n")
     .map(line => line.trim())
@@ -48,7 +42,11 @@ function toChecklistMarkdown(raw = "") {
   return lines.map(line => `- [ ] ${line}`).join("\n");
 }
 
-// ---------- 1000.school API ----------
+// =========================
+// 1000.school API
+// =========================
+
+// 현재 스니펫 business date 조회
 async function getBusinessDate() {
   const res = await fetch(`${SNIPPET_API_BASE_URL}/snippet_date`, {
     method: "GET",
@@ -64,18 +62,17 @@ async function getBusinessDate() {
     throw new Error(`snippet_date 조회 실패: ${res.status} / ${text}`);
   }
 
-  // 문서 캡처상 응답 예시는 "string" 이라 plain text/string JSON 둘 다 대비
+  // 응답이 plain text거나 JSON string일 수 있어서 둘 다 처리
   try {
     const parsed = JSON.parse(text);
     if (typeof parsed === "string") return parsed;
     if (parsed?.date) return parsed.date;
-  } catch (_) {
-    // plain text일 수 있음
-  }
+  } catch (_) {}
 
   return text.replace(/"/g, "").trim();
 }
 
+// 스니펫 생성
 async function createDailySnippet(content) {
   const res = await fetch(`${SNIPPET_API_BASE_URL}/daily-snippets`, {
     method: "POST",
@@ -89,6 +86,9 @@ async function createDailySnippet(content) {
 
   const text = await res.text();
 
+  console.log("=== POST 상태 ===", res.status);
+  console.log("=== POST 원문 응답 ===", text);
+
   if (!res.ok) {
     throw new Error(`daily-snippets POST 실패: ${res.status} / ${text}`);
   }
@@ -100,21 +100,24 @@ async function createDailySnippet(content) {
     data = { raw: text };
   }
 
-  console.log("=== 생성 응답 ===");
-  console.log(data);
+  console.log("=== POST 응답 JSON ===");
+  console.log(JSON.stringify(data, null, 2));
 
-  // 실제 응답 키 이름이 문서에 안 보여서 여러 경우 대비
+  // 문서 예시상 id가 있으므로 우선 id 사용
   const snippetId =
-    data?.id ||
-    data?.snippet_id ||
-    data?.daily_snippet_id ||
-    data?.data?.id ||
-    data?.data?.snippet_id ||
+    data?.id ??
+    data?.snippet_id ??
+    data?.daily_snippet_id ??
+    data?.data?.id ??
+    data?.data?.snippet_id ??
     null;
+
+  console.log("snippetId:", snippetId);
 
   return { data, snippetId };
 }
 
+// AI 피드백 조회
 async function getDailySnippetFeedback() {
   const res = await fetch(`${SNIPPET_API_BASE_URL}/daily-snippets/feedback`, {
     method: "GET",
@@ -126,18 +129,22 @@ async function getDailySnippetFeedback() {
 
   const text = await res.text();
 
+  console.log("=== feedback 상태 ===", res.status);
+  console.log("=== feedback 원문 응답 ===", text);
+
   if (!res.ok) {
     throw new Error(`feedback 조회 실패: ${res.status} / ${text}`);
   }
 
   const data = JSON.parse(text);
 
-  console.log("=== feedback 응답 ===");
-  console.log(data);
+  console.log("=== feedback 응답 JSON ===");
+  console.log(JSON.stringify(data, null, 2));
 
   return data;
 }
 
+// 스니펫 수정
 async function updateDailySnippet(snippetId, content) {
   const res = await fetch(`${SNIPPET_API_BASE_URL}/daily-snippets/${snippetId}`, {
     method: "PUT",
@@ -151,15 +158,19 @@ async function updateDailySnippet(snippetId, content) {
 
   const text = await res.text();
 
+  console.log("=== PUT 상태 ===", res.status);
+  console.log("=== PUT 원문 응답 ===", text);
+
   if (!res.ok) {
     throw new Error(`daily-snippets PUT 실패: ${res.status} / ${text}`);
   }
-
-  console.log("=== 업데이트 응답 ===");
-  console.log(text);
 }
 
-// ---------- Notion API ----------
+// =========================
+// Notion API
+// =========================
+
+// 공통 Notion query
 async function queryNotion(filter) {
   const res = await fetch(
     `https://api.notion.com/v1/databases/${NOTION_DATABASE_ID}/query`,
@@ -176,6 +187,9 @@ async function queryNotion(filter) {
 
   const data = await res.json();
 
+  console.log("=== Notion query 응답 ===");
+  console.log(JSON.stringify(data, null, 2));
+
   if (!res.ok) {
     throw new Error(`Notion query 실패: ${res.status} / ${JSON.stringify(data)}`);
   }
@@ -183,6 +197,7 @@ async function queryNotion(filter) {
   return data.results || [];
 }
 
+// 현재 business date에 해당하는, 아직 전송 안 된 오늘 행 찾기
 async function getPendingRowsForBusinessDate(businessDate) {
   return queryNotion({
     and: [
@@ -202,6 +217,7 @@ async function getPendingRowsForBusinessDate(businessDate) {
   });
 }
 
+// 특정 날짜의 노션 행 1개 가져오기
 async function getRowByDate(dateStr) {
   const rows = await queryNotion({
     property: "기록일자",
@@ -210,6 +226,7 @@ async function getRowByDate(dateStr) {
   return rows[0] || null;
 }
 
+// 전송 후 노션 업데이트
 async function updateNotionAfterSend(pageId, { snippetId, feedback }) {
   const body = {
     properties: {
@@ -241,12 +258,19 @@ async function updateNotionAfterSend(pageId, { snippetId, feedback }) {
 
   const data = await res.json();
 
+  console.log("=== Notion 업데이트 응답 ===");
+  console.log(JSON.stringify(data, null, 2));
+
   if (!res.ok) {
     throw new Error(`Notion 업데이트 실패: ${res.status} / ${JSON.stringify(data)}`);
   }
 }
 
-// ---------- 최종 콘텐츠 조립 ----------
+// =========================
+// 콘텐츠 조립
+// =========================
+
+// 1차 저장용: 체크리스트 + 원문
 function buildInitialContent({ title, author, team, rawBody, yesterdayTodoChecklist, businessDate }) {
   const todoSection = yesterdayTodoChecklist
     ? `## 전날 내일 할 일 체크리스트\n${yesterdayTodoChecklist}\n`
@@ -266,6 +290,7 @@ function buildInitialContent({ title, author, team, rawBody, yesterdayTodoCheckl
   ].join("\n");
 }
 
+// 최종 업데이트용: 체크리스트 + AI 요약
 function buildFinalContent({ title, author, team, yesterdayTodoChecklist, feedback, businessDate }) {
   const todoSection = yesterdayTodoChecklist
     ? `## 전날 내일 할 일 체크리스트\n${yesterdayTodoChecklist}\n`
@@ -285,11 +310,15 @@ function buildFinalContent({ title, author, team, yesterdayTodoChecklist, feedba
   ].join("\n");
 }
 
-// ---------- 메인 ----------
+// =========================
+// 메인 실행
+// =========================
 async function main() {
+  // 1. 서버 기준 현재 스니펫 날짜 확인
   const businessDate = await getBusinessDate();
   console.log("현재 스니펫 business date:", businessDate);
 
+  // 2. 오늘(서버 기준) 전송 대상 찾기
   const pendingRows = await getPendingRowsForBusinessDate(businessDate);
   console.log("전송 대상 개수:", pendingRows.length);
 
@@ -298,12 +327,14 @@ async function main() {
     return;
   }
 
+  // 3. 전날 행에서 '내일할일' 가져오기
   const prevDate = minusOneDay(businessDate);
   const prevRow = await getRowByDate(prevDate);
 
   const yesterdayTodoRaw = prevRow ? getRichText(prevRow.properties["내일할일"]) : "";
   const yesterdayTodoChecklist = toChecklistMarkdown(yesterdayTodoRaw);
 
+  // 4. 각 대상 행 처리
   for (const row of pendingRows) {
     const props = row.properties;
 
@@ -312,6 +343,7 @@ async function main() {
     const author = getAuthor(props);
     const team = getRichText(props["팀명"]);
 
+    // 4-1. 초안 생성 (체크리스트 + 원문)
     const initialContent = buildInitialContent({
       title,
       author,
@@ -324,12 +356,14 @@ async function main() {
     console.log("=== 초기 전송 content ===");
     console.log(initialContent);
 
+    // 4-2. POST
     const { snippetId } = await createDailySnippet(initialContent);
 
+    // 4-3. AI feedback 조회
     const feedbackRes = await getDailySnippetFeedback();
     const feedback = feedbackRes?.feedback || "";
 
-    // snippet_id를 못 받으면 업데이트는 못 하지만 Notion에는 피드백 저장 가능
+    // 4-4. snippetId가 있으면 최종 업데이트
     if (snippetId) {
       const finalContent = buildFinalContent({
         title,
@@ -345,9 +379,10 @@ async function main() {
 
       await updateDailySnippet(snippetId, finalContent);
     } else {
-      console.warn("snippet_id를 응답에서 찾지 못해서 PUT 업데이트를 건너뜁니다.");
+      console.warn("snippetId를 찾지 못해서 PUT 업데이트는 건너뜁니다.");
     }
 
+    // 4-5. 노션 업데이트
     await updateNotionAfterSend(row.id, {
       snippetId,
       feedback,
