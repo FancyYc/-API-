@@ -2,7 +2,7 @@ name: Sync Notion Snippets
 
 on:
   schedule:
-    - cron: "*/5 * * * *"  # 5분마다 실행
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 jobs:
@@ -11,15 +11,12 @@ jobs:
 
     steps:
       - name: 코드 가져오기
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Node.js 설치
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: 18
-
-      - name: 패키지 설치
-        run: npm install
+          node-version: 20
 
       - name: 스크립트 실행
         run: node scripts/sync-snippets.js
