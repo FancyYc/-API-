@@ -62,11 +62,15 @@ async function sendToSnippetAPI(item) {
   const props = item.properties;
 
   const payload = {
-    title: getTitle(props["제목"]),
-    content: getRichText(props["내용"]),
-    author: getRichText(props["작성자"]),
-    team: getRichText(props["팀명"]),
-  };
+  content: `
+제목: ${getTitle(props["제목"])}
+작성자: ${getRichText(props["작성자"])}
+팀: ${getRichText(props["팀명"])}
+
+내용:
+${getRichText(props["내용"])}
+`
+};
 
   console.log("=== 1000.school로 보낼 payload ===");
   console.log(JSON.stringify(payload, null, 2));
