@@ -3,7 +3,7 @@ const NOTION_DATABASE_ID = process.env.NOTION_DATABASE_ID;
 const SNIPPET_API_BASE_URL = process.env.SNIPPET_API_BASE_URL;
 const SNIPPET_API_TOKEN = process.env.SNIPPET_API_TOKEN;
 
-// ---------- 유틸 ----------
+// ---------- 공통 유틸 ----------
 function getTitle(prop) {
   return prop?.title?.map(t => t.plain_text).join("") || "";
 }
@@ -12,21 +12,7 @@ function getRichText(prop) {
   return prop?.rich_text?.map(t => t.plain_text).join("") || "";
 }
 
-function getPeopleNames(prop) {
-  return prop?.people?.map(p => p.name).join(", ") || "";
-}
-
-function getAuthor(props) {
-  return getRichText(props["작성자"]) || getPeopleNames(props["작성자"]);
-}
-
-function minusOneDay(dateStr) {
-  const d = new Date(`${dateStr}T00:00:00`);
-  d.setDate(d.getDate() - 1);
-  return d.toISOString().slice(0, 10);
-}
-
-// 여러 줄 텍스트를 bullet 배열로 정리
+// 여러 줄 텍스트를 bullet 리스트용 배열로 정리
 function parseLines(raw = "") {
   return raw
     .split("\n")
@@ -35,26 +21,30 @@ function parseLines(raw = "") {
     .map(line => line.replace(/^[-*]\s*/, "").replace(/^\d+\.\s*/, ""));
 }
 
-// 오늘 한 일 자동 구조화
-function buildTodayWorkSection(raw = "") {
+// 일반 bullet 섹션 만들기
+function buildBulletSection(title, raw = "") {
   const lines = parseLines(raw);
 
-  if (lines.length === 0) {
-    return `## 오늘 한 일\n- (내용 없음)`;
-  }
+  if (lines.length === 0) return "";
 
-  return `## 오늘 한 일\n${lines.map(line => `- ${line}`).join("\n")}`;
+  return [
+    `## ${title}`,
+    ...lines.map(line => `- ${line}`),
+    ""
+  ].join("\n");
 }
 
-// 전날 한 일 체크박스화
-function buildYesterdayChecklist(raw = "") {
+// 체크박스 섹션 만들기
+function buildCheckboxSection(title, raw = "") {
   const lines = parseLines(raw);
 
-  if (lines.length === 0) {
-    return `## 전날 한 일 체크리스트\n- [ ] 전날 기록 없음`;
-  }
+  if (lines.length === 0) return "";
 
-  return `## 전날 한 일 체크리스트\n${lines.map(line => `- [ ] ${line}`).join("\n")}`;
+  return [
+    `## ${title}`,
+    ...lines.map(line => `- [ ] ${line}`),
+    ""
+  ].join("\n");
 }
 
 // ---------- Notion 조회 ----------
@@ -84,7 +74,7 @@ async function queryNotion(filter) {
   return data.results || [];
 }
 
-// 오늘 전송할 행
+// 상태=완료, 전송완료=false 인 행만 가져오기
 async function getPendingRows() {
   return queryNotion({
     and: [
@@ -98,16 +88,6 @@ async function getPendingRows() {
       },
     ],
   });
-}
-
-// 특정 날짜의 행 하나 찾기
-async function getRowByDate(dateStr) {
-  const rows = await queryNotion({
-    property: "기록일자",
-    date: { equals: dateStr },
-  });
-
-  return rows[0] || null;
 }
 
 // ---------- 1000.school 전송 ----------
@@ -189,29 +169,38 @@ async function markAsSent(pageId, snippetId = null) {
 }
 
 // ---------- 최종 content 조립 ----------
-function buildFinalContent({
-  title,
-  author,
-  team,
-  todayRaw,
-  yesterdayRaw,
-  recordDate,
-}) {
-  const yesterdaySection = buildYesterdayChecklist(yesterdayRaw);
-  const todaySection = buildTodayWorkSection(todayRaw);
+function buildFinalContent(props) {
+  const title = getTitle(props["제목"]);
 
-  return [
-    `## 제목`,
-    `${title}`,
-    ``,
-    `작성자: ${author || "-"}`,
-    `팀: ${team || "-"}`,
-    `기록일자: ${recordDate || "-"}`,
-    ``,
-    yesterdaySection,
-    ``,
-    todaySection,
-  ].join("\n");
+  const sections = [];
+
+  if (title) {
+    sections.push(`## 제목\n${title}\n`);
+  }
+
+  sections.push(buildBulletSection("오늘 한 일", getRichText(props["오늘 한 일"])));
+  sections.push(buildBulletSection("수행 목적", getRichText(props["수행 목적"])));
+  sections.push(buildBulletSection("하이라이트", getRichText(props["하이라이트"])));
+  sections.push(buildBulletSection("로우라이트", getRichText(props["로우라이트"])));
+
+  // 내일 할일은 체크박스 스타일
+  sections.push(buildCheckboxSection("내일 할일", getRichText(props["내일 할일"])));
+
+  sections.push(
+    buildBulletSection(
+      "오늘 내가 팀에 기여한 가치",
+      getRichText(props["오늘 내가 팀에 기여한 가치"])
+    )
+  );
+
+  sections.push(
+    buildBulletSection(
+      "오늘의 배움 또는 남길 말",
+      getRichText(props["오늘의 배움 또는 남길 말"])
+    )
+  );
+
+  return sections.filter(Boolean).join("\n").trim();
 }
 
 // ---------- 메인 ----------
@@ -227,30 +216,7 @@ async function main() {
   for (const item of items) {
     const props = item.properties;
 
-    const title = getTitle(props["제목"]);
-    const todayRaw = getRichText(props["내용"]);
-    const author = getAuthor(props);
-    const team = getRichText(props["팀명"]);
-    const recordDate = props["기록일자"]?.date?.start || "";
-
-    let yesterdayRaw = "";
-    if (recordDate) {
-      const prevDate = minusOneDay(recordDate);
-      const prevRow = await getRowByDate(prevDate);
-
-      if (prevRow) {
-        yesterdayRaw = getRichText(prevRow.properties["내용"]);
-      }
-    }
-
-    const finalContent = buildFinalContent({
-      title,
-      author,
-      team,
-      todayRaw,
-      yesterdayRaw,
-      recordDate,
-    });
+    const finalContent = buildFinalContent(props);
 
     console.log("=== 최종 전송 content ===");
     console.log(finalContent);
