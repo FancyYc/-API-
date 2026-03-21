@@ -20,6 +20,43 @@ function getAuthor(props) {
   return getRichText(props["작성자"]) || getPeopleNames(props["작성자"]);
 }
 
+function minusOneDay(dateStr) {
+  const d = new Date(`${dateStr}T00:00:00`);
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+// 여러 줄 텍스트를 bullet 배열로 정리
+function parseLines(raw = "") {
+  return raw
+    .split("\n")
+    .map(line => line.trim())
+    .filter(Boolean)
+    .map(line => line.replace(/^[-*]\s*/, "").replace(/^\d+\.\s*/, ""));
+}
+
+// 오늘 한 일 자동 구조화
+function buildTodayWorkSection(raw = "") {
+  const lines = parseLines(raw);
+
+  if (lines.length === 0) {
+    return `## 오늘 한 일\n- (내용 없음)`;
+  }
+
+  return `## 오늘 한 일\n${lines.map(line => `- ${line}`).join("\n")}`;
+}
+
+// 전날 한 일 체크박스화
+function buildYesterdayChecklist(raw = "") {
+  const lines = parseLines(raw);
+
+  if (lines.length === 0) {
+    return `## 전날 한 일 체크리스트\n- [ ] 전날 기록 없음`;
+  }
+
+  return `## 전날 한 일 체크리스트\n${lines.map(line => `- [ ] ${line}`).join("\n")}`;
+}
+
 // ---------- Notion 조회 ----------
 async function queryNotion(filter) {
   const res = await fetch(
@@ -47,7 +84,7 @@ async function queryNotion(filter) {
   return data.results || [];
 }
 
-// 상태=완료, 전송완료=false 인 행만 가져오기
+// 오늘 전송할 행
 async function getPendingRows() {
   return queryNotion({
     and: [
@@ -61,6 +98,16 @@ async function getPendingRows() {
       },
     ],
   });
+}
+
+// 특정 날짜의 행 하나 찾기
+async function getRowByDate(dateStr) {
+  const rows = await queryNotion({
+    property: "기록일자",
+    date: { equals: dateStr },
+  });
+
+  return rows[0] || null;
 }
 
 // ---------- 1000.school 전송 ----------
@@ -107,7 +154,7 @@ async function createDailySnippet(content) {
   return { data, snippetId };
 }
 
-// ---------- 전송 완료 처리 ----------
+// ---------- Notion 업데이트 ----------
 async function markAsSent(pageId, snippetId = null) {
   const body = {
     properties: {
@@ -141,6 +188,32 @@ async function markAsSent(pageId, snippetId = null) {
   }
 }
 
+// ---------- 최종 content 조립 ----------
+function buildFinalContent({
+  title,
+  author,
+  team,
+  todayRaw,
+  yesterdayRaw,
+  recordDate,
+}) {
+  const yesterdaySection = buildYesterdayChecklist(yesterdayRaw);
+  const todaySection = buildTodayWorkSection(todayRaw);
+
+  return [
+    `## 제목`,
+    `${title}`,
+    ``,
+    `작성자: ${author || "-"}`,
+    `팀: ${team || "-"}`,
+    `기록일자: ${recordDate || "-"}`,
+    ``,
+    yesterdaySection,
+    ``,
+    todaySection,
+  ].join("\n");
+}
+
 // ---------- 메인 ----------
 async function main() {
   const items = await getPendingRows();
@@ -155,18 +228,29 @@ async function main() {
     const props = item.properties;
 
     const title = getTitle(props["제목"]);
-    const body = getRichText(props["내용"]);
+    const todayRaw = getRichText(props["내용"]);
     const author = getAuthor(props);
     const team = getRichText(props["팀명"]);
+    const recordDate = props["기록일자"]?.date?.start || "";
 
-    // 노션 원문 중심으로 그대로 구성
-    const finalContent = `제목: ${title}
+    let yesterdayRaw = "";
+    if (recordDate) {
+      const prevDate = minusOneDay(recordDate);
+      const prevRow = await getRowByDate(prevDate);
 
-작성자: ${author}
-팀: ${team}
+      if (prevRow) {
+        yesterdayRaw = getRichText(prevRow.properties["내용"]);
+      }
+    }
 
-내용:
-${body}`;
+    const finalContent = buildFinalContent({
+      title,
+      author,
+      team,
+      todayRaw,
+      yesterdayRaw,
+      recordDate,
+    });
 
     console.log("=== 최종 전송 content ===");
     console.log(finalContent);
