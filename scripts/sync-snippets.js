@@ -308,7 +308,7 @@ async function markAsSent(pageId, snippetId = null, anomalyMessages = []) {
   }
 
   if (anomalyMessages.length > 0) {
-    body.properties["이상패턴감지"] = {
+    body.properties["이상 패턴 감지"] = {
       rich_text: [
         {
           text: {
