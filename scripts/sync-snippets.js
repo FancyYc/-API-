@@ -226,6 +226,29 @@ async function main() {
   }
 }
 
+function normalizeText(text = "") {
+  return text
+    .toLowerCase()
+    .replace(/[^\w가-힣\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractKeywords(line = "") {
+  const normalized = normalizeText(line);
+
+  // 너무 짧은 조사/불용어는 제외
+  const stopwords = new Set([
+    "하기", "하기를", "이상", "정도", "관련", "통해", "및", "그리고",
+    "오늘", "내일", "한", "할", "수", "것", "등", "더", "잘"
+  ]);
+
+  return normalized
+    .split(" ")
+    .map(w => w.trim())
+    .filter(w => w.length >= 2 && !stopwords.has(w));
+}
+
 main().catch((err) => {
   console.error("실행 중 오류:", err);
   process.exit(1);
